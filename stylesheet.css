@@ -140,3 +140,82 @@ span.highlight {
     display: inline-block;
     border-radius: 10px;
 }
+
+.experience-table {
+  width: 100%;
+  border: 0;
+  border-spacing: 0 12px;
+  border-collapse: separate;
+  margin-right: auto;
+  margin-left: auto;
+}
+
+.experience-logo-cell {
+  width: 20%;
+  max-width: none;
+  padding: 12px 8px 12px 12px;
+  vertical-align: middle;
+}
+
+.experience-logo {
+  display: block;
+  width: 72%;
+  aspect-ratio: 1 / 1;
+  height: auto;
+  max-width: 110px;
+  object-fit: contain;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  padding: 10px;
+  border-radius: 18px;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  margin: 0 auto;
+}
+
+.experience-content {
+  padding: 12px 8px 12px 16px;
+  vertical-align: middle;
+}
+
+.experience-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.experience-org {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.experience-date {
+  color: #555555;
+}
+
+.experience-points {
+  margin: 10px 0 0 18px;
+  padding: 0;
+}
+
+.experience-points li {
+  margin-bottom: 6px;
+}
+
+@media (max-width: 700px) {
+  .experience-logo-cell,
+  .experience-content {
+    display: block;
+    width: 100%;
+    max-width: none;
+    padding: 8px 12px;
+  }
+
+  .experience-logo {
+    width: 60%;
+    max-width: 160px;
+    margin: 0 auto 8px;
+  }
+}
