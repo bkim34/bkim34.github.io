@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SimpleMark: Fast Multi-Bit Text Watermarking under f-Divergence Constraints | Benjamin D. Kim</title>
+  <meta name="author" content="Benjamin D. Kim">
+  <meta name="description" content="How to hide a message in LLM text while provably bounding what any detector can learn from each token: an interactive explainer of SimpleMark, a multi-bit watermark with a per-key f-divergence budget.">
+  <link rel="canonical" href="https://bkim34.github.io/blog/2026/simplemark/">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13' font-family='sans-serif' font-weight='700'%3EB%3C/text%3E%3C/svg%3E">
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="SimpleMark: Fast Multi-Bit Text Watermarking under f-Divergence Constraints">
+  <meta property="og:description" content="Hide a message in LLM text while bounding what any detector can learn from each token. Interactive explainer of our multi-bit watermark.">
+  <meta property="og:url" content="https://bkim34.github.io/blog/2026/simplemark/">
+  <meta property="og:image" content="https://bkim34.github.io/blog/assets/2026-10-06-simplemark/cover.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="SimpleMark: Fast Multi-Bit Text Watermarking under f-Divergence Constraints">
+  <meta name="twitter:description" content="Hide a message in LLM text while bounding what any detector can learn from each token. Interactive explainer of our multi-bit watermark.">
+  <meta name="twitter:image" content="https://bkim34.github.io/blog/assets/2026-10-06-simplemark/cover.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,400;0,700;1,400;1,700&display=swap">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.css">
+  <link rel="stylesheet" href="../../blog.css">
+  <script type="application/ld+json">
+  {"@context":"https://schema.org","@type":"BlogPosting",
+   "headline":"SimpleMark: Fast Multi-Bit Text Watermarking under f-Divergence Constraints",
+   "description":"An interactive explainer of SimpleMark, a multi-bit LLM watermark with a per-key f-divergence budget.",
+   "datePublished":"2026-10-06","dateModified":"2026-10-06",
+   "author":{"@type":"Person","name":"Benjamin D. Kim","url":"https://bkim34.github.io"},
+   "image":"https://bkim34.github.io/blog/assets/2026-10-06-simplemark/cover.png",
+   "mainEntityOfPage":"https://bkim34.github.io/blog/2026/simplemark/"}
+  </script>
+</head>
+<body>
+  <nav class="site-nav" aria-label="Site">
+    <a class="brand" href="../../../index.html">Benjamin D. Kim</a>
+    <span class="links">
+      <a href="../../../index.html">Home</a>
+      <a class="active" href="../../index.html">Blog</a>
+      <a href="../../../Ben_Kim_CV.pdf">CV</a>
+    </span>
+  </nav>
+
+  <main class="wrap post">
+
+    <!-- ============================ HERO ============================ -->
+    <header class="paper-hero">
+      <h1>SimpleMark: Fast Multi-Bit Text Watermarking under <em>f</em>-Divergence Constraints</h1>
+      <p class="authors">Benjamin D. Kim, Wanrong Zhang, Weitong Ruan, Lav R. Varshney, Daniel Alabi</p>
+      <p class="venue">arXiv preprint, October 2026</p>
+      <p class="collab">I have been working on this project in collaboration with <b>UIUC</b> and <b>Amazon AGI</b>.</p>
+      <ul class="paper-links">
+        <li><a href="https://arxiv.org/abs/2610.05712">arXiv</a></li>
+        <li><a href="https://arxiv.org/pdf/2610.05712">PDF</a></li>
+        <li><a href="#cite">BibTeX</a></li>
+      </ul>
+      <p class="post-meta">Blog post by Ben Kim · October 6, 2026 · about 12 minutes</p>
+    </header>
+
+    <!-- ============================ OVERVIEW ANIMATION ============================ -->
+    <figure class="fig hero-fig breakout" id="sm-hero">
+      <div class="hero-row">
+        <div class="hero-panel">
+          <h3><span class="num">1</span>The secret key picks a target word</h3>
+          <svg id="sm-hero-key" viewBox="0 0 340 250" role="img" aria-label="Eight candidate words sit on the vertices of a simplex; the secret key selects one of them as the target."></svg>
+        </div>
+        <div class="hero-panel">
+          <h3><span class="num">2</span>Tilt toward it, by at most ε</h3>
+          <svg id="sm-hero-tilt" viewBox="0 0 320 300" role="img" aria-label="The next-word probabilities are tilted toward the target word within the divergence budget, then a word is sampled."></svg>
+        </div>
+        <div class="hero-panel">
+          <h3><span class="num">3</span>Sample a word, repeat</h3>
+          <div class="hero-card"><span class="word" id="sm-hero-word">…</span><span class="badge" id="sm-hero-badge"></span></div>
+          <div class="hero-sentence" id="sm-hero-sentence"></div>
+          <div class="hero-count" id="sm-hero-count"></div>
+        </div>
+      </div>
+      <figcaption><b>SimpleMark in one loop.</b> For every word, the secret key picks a target among the model's top candidate words (1), the next-word probabilities are tilted toward that target by at most a budget ε (2), and a word is sampled from the tilted distribution (3). Most sampled words are not the target; the decoder reads the message from <em>which</em> words landed on their targets over the whole text. Try it yourself below.</figcaption>
+    </figure>
+
+    <!-- ============================ DEMO ============================ -->
+    <section class="demo breakout" id="smdemo" aria-label="Interactive SimpleMark demo">
+      <div class="demo-head">
+        <h2>Try it: hide a 3-bit message in a story (simplified)</h2>
+        <p>A language model writes a story one word at a time. SimpleMark nudges each choice toward one secret <em>target</em> word, spending at most a budget <b>ε</b> (with TV, at most ε of probability mass moves), so an outsider can barely tell while someone holding the key can read the message back. TV caps what <em>any</em> detector can learn from a word; KL caps the perplexity cost instead. Pick a message, set a budget, and press <b>Next word</b>.</p>
+      </div>
+      <div class="demo-controls">
+        <div class="ctrl"><span class="ctrl-label" id="sm-msg-label">Message (3 bits)</span><div class="msg-buttons" id="sm-msg" role="group" aria-labelledby="sm-msg-label"></div></div>
+        <div class="ctrl"><span class="ctrl-label" id="sm-mode-label">Distance measure</span><div class="seg" id="sm-mode" role="group" aria-labelledby="sm-mode-label"><button type="button" data-mode="tv" title="Total variation: bounds the best detector's advantage">TV</button><button type="button" data-mode="kl" title="KL divergence: bounds the watermark's log-loss factor in perplexity">KL</button></div></div>
+        <div class="ctrl grow"><label for="sm-eps">Budget <span class="sym">ε</span> = <span id="sm-eps-val">0.20</span></label><input type="range" id="sm-eps" min="0.01" max="0.5" step="0.01" value="0.2"></div>
+        <div class="ctrl"><label for="sm-alpha">Max boost <span class="sym">α</span> ≤</label><select id="sm-alpha"><option value="none">none</option><option value="5">5</option><option value="3">3</option><option value="2">2</option></select></div>
+        <div class="ctrl"><label for="sm-key">Secret key</label><input type="number" id="sm-key" value="1234" min="0" step="1"></div>
+        <div class="ctrl"><span class="ctrl-label">Words</span><div id="sm-count" style="font-family:ui-monospace,Menlo,monospace;font-size:.9rem;padding:4px 0">0 / 45</div></div>
+        <div class="ctrl"><div class="demo-actions"><button type="button" class="primary" id="sm-step">Next word</button><button type="button" id="sm-play">Play</button><button type="button" id="sm-run">Run to end</button><button type="button" id="sm-reset">Reset</button></div></div>
+      </div>
+      <div class="demo-grid">
+        <div class="panel">
+          <h3>Encoder: tilt the next-word distribution</h3>
+          <div class="pipeline" id="sm-pipeline"></div>
+          <div class="small" id="sm-steptitle" style="margin-bottom:4px"></div>
+          <div class="chart-legend">
+            <span><span class="sw" style="border:1.5px dashed #8a8dd6;background:#fff"></span>base model Q<sub>t</sub> (original probabilities)</span>
+            <span><span class="sw" style="background:#c7c9f0;border-color:#5b5fc7"></span>other words, scaled down ×β</span>
+            <span><span class="sw" style="background:#c9463a;border-color:#9b2f25"></span>target word, boosted ×α</span>
+          </div>
+          <div class="svgwrap" id="sm-bars"></div>
+          <div class="readouts" id="sm-readouts"></div>
+          <p class="verdict" id="sm-sample"></p>
+        </div>
+        <div class="demo-col">
+          <div class="panel">
+            <h3>Decoder: which message explains the words?</h3>
+            <div class="svgwrap" id="sm-dec"></div>
+            <p class="verdict" id="sm-verdict" aria-live="polite" aria-atomic="true"></p>
+            <label class="opt"><input type="checkbox" id="sm-wrongkey"> Decoder uses the wrong key</label>
+          </div>
+          <div class="panel story">
+            <h3>Generated text</h3>
+            <div id="sm-story"></div>
+            <div class="legend"><span class="sw" style="background:#f6d9d5;border-color:#c9463a"></span> the target word was sampled &nbsp;·&nbsp; <span class="sw" style="background:#fff;border-bottom:2px solid #d8d9f3"></span> a different word was sampled. Every word is a random draw from the tilted distribution; the decoder reads the message from the <em>statistics</em> of hits.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ TL;DR ============================ -->
+    <div class="tldr">
+      <p class="label">TL;DR</p>
+      <p>We study <strong>multi-bit watermarking</strong> of language-model text (hiding a message such as a user or model ID in generated text) as communication over a constrained channel, and introduce <strong>SimpleMark</strong>, a watermark with three properties:</p>
+      <ol>
+        <li><strong>Security is a knob you set.</strong> Every next-token distribution the watermarked model samples from stays within an <em>f</em>-divergence budget ε (total variation or KL) of the (top-<em>q</em> truncated) base model, for the <em>actual</em> key and message in use, a stronger guarantee than existing multi-bit schemes provide. With TV, the best possible detector gains at most ε advantage per token.</li>
+        <li><strong>Embedding is closed-form and \(O_q(1)\).</strong> Putting a message symbol into a token is a two-number tilt of the next-token distribution: multiply the target token's probability by α and everything else by β. An error-correcting (LDPC) code protects the message and a maximum-likelihood decoder reads it back.</li>
+        <li><strong>The theory says what the budget buys.</strong> Exact per-key distortion-freeness forces zero capacity: no scheme can embed even one bit. A nonzero budget buys capacity, and we bound the achievable rate. Empirically SimpleMark is far less detectable than prior multi-bit schemes (ArcMark, BiMark) while staying competitive with them on message recovery, perplexity, and reasoning performance (at a TV budget of 0.15 it recovers the message from shorter texts than both; at the smallest budgets its decoder needs longer texts).</li>
+      </ol>
+    </div>
+
+    <nav class="toc" aria-label="Table of contents">
+      <p class="label">Contents</p>
+      <ol>
+        <li><a href="#why">Why watermark text, and why with a message?</a></li>
+        <li><a href="#undetectable">What should “undetectable” mean?</a></li>
+        <li><a href="#price">Distortion is the price of embedding</a></li>
+        <li><a href="#method">SimpleMark, step by step</a></li>
+        <li><a href="#experiments">Experiments</a></li>
+        <li><a href="#conclusion">Conclusion</a></li>
+      </ol>
+    </nav>
+
+    <!-- ============================ 1. WHY ============================ -->
+    <section id="why">
+      <h2>1. Why watermark text, and why with a message?</h2>
+      <p>Large language models write fluent text at scale, which makes it hard to know where a piece of text came from. A <em>text watermark</em> is a way for the model provider to leave a statistical fingerprint in the sampling process: at each step the model slightly prefers some tokens over others, in a pattern driven by a secret key, so that someone who holds the key can later check for the pattern. The pattern is meant to be invisible to readers and to anyone without the key.</p>
+      <p>Providers are wary of changing their models' outputs, and the history of deployed text watermarks shows why. OpenAI built a text watermark for ChatGPT and then held it back for years: an internal survey found that nearly 30% of users said they would use ChatGPT less if its text were watermarked.<sup class="fn"><a href="#ref-1">[1]</a></sup> It announced in October 2026 that it would watermark ChatGPT and Codex text in the EU to comply with the EU AI Act's transparency rules, leaving the API watermark off by default elsewhere, and its own tests found that replacing a quarter of the words with synonyms cut detection to 17%.<sup class="fn"><a href="#ref-2">[2]</a></sup> Google DeepMind's SynthID-Text, deployed in Gemini since 2024, was built around a “non-distortionary” sampling mode and validated on roughly 20 million live responses specifically to show that users would not notice a difference.<sup class="fn"><a href="#ref-3">[3]</a></sup> Anthropic began watermarking Claude's text in August 2026 under the same EU rules, stressing that the mark does not change the meaning, quality, or readability of a response.<sup class="fn"><a href="#ref-4">[4]</a></sup> Meanwhile a whole category of tools exists to strip watermarks and “humanize” AI text, from research paraphrasers to commercial rewriters, and paraphrasing alone substantially weakens most deployed marks.<sup class="fn"><a href="#ref-5">[5]</a>,<a href="#ref-6">[6]</a></sup> The lesson for watermark design is that providers and users will only accept a mark whose effect on the text is provably small. The distortion a watermark introduces has to be a quantity you can bound and set in advance, not a side effect you measure afterward.</p>
+      <p>The first generation of LLM watermarks<sup class="fn"><a href="#ref-7" id="c1">[7]</a>,<a href="#ref-8">[8]</a>,<a href="#ref-9">[9]</a></sup> is <em>zero-bit</em>: the detector answers one yes/no question, “did my model generate this text?” Many uses need more. A provider might want to recover <em>which</em> user, which model version, which timestamp, or which policy tag produced a text.<sup class="fn"><a href="#ref-10">[10]</a>,<a href="#ref-11">[11]</a></sup> That is <em>multi-bit</em> watermarking: the text carries a message.</p>
+      <p>Multi-bit watermarking has a built-in tension. Every bit you embed has to show up as some bias in the model's word choices. More bias makes the message easier to read back, but it also makes the text statistically different from unwatermarked text, which is exactly what an adversary looks for.<sup class="fn"><a href="#ref-12">[12]</a>,<a href="#ref-13">[13]</a></sup> The question we set out to answer is: <em>how much information can you embed while staying within a prescribed distance of the unwatermarked model, and what notion of distance actually protects you?</em></p>
+    </section>
+
+    <!-- ============================ 2. UNDETECTABLE ============================ -->
+    <section id="undetectable">
+      <h2>2. What should “undetectable” mean?</h2>
+      <p>Picture the adversary as a <em>distinguisher</em>: it looks at a token (or a whole text) and outputs “watermarked” or “not”. Its <em>advantage</em> is how much more often it says “watermarked” on watermarked samples than on clean ones. A classical fact from statistics and cryptography<sup class="fn"><a href="#ref-14">[14]</a></sup> is that the best possible distinguisher's advantage is exactly the <em>total variation</em> (TV) distance between the two distributions:</p>
+      <p>\[ \sup_{\mathcal D}\Big|\Pr_{X\sim P}[\mathcal D(X)=1]-\Pr_{X\sim Q}[\mathcal D(X)=1]\Big| \;=\; d_{\mathrm{TV}}(P,Q) \;=\; \tfrac12\sum_x |P(x)-Q(x)|. \]</p>
+      <p>So if we want a guarantee against <em>every</em> detector, including ones nobody has invented yet, bounding the TV distance between the watermarked next-token distribution and the base model's is the right target.</p>
+      <p>TV is one member of a larger family, the <em>f</em>-divergences, \(D_f(P\|Q)=\sum_x Q(x)\,f\!\big(P(x)/Q(x)\big)\) for a convex \(f\) with \(f(1)=0\). The same family contains the Kullback–Leibler divergence \(\mathrm{KL}(P\|Q)=\sum_x P(x)\log\frac{P(x)}{Q(x)}\), which matters for a different reason: it controls <em>perplexity</em>, the usual text-quality metric. If the watermarked model samples from \(P\) and we score the text with the base model \(Q\), then</p>
+      <p>\[ \mathrm{PPL} \;=\; \exp\!\big(\mathbb E_{x\sim P}[-\log Q(x)]\big) \;=\; e^{H(P)}\, e^{\mathrm{KL}(P\|Q)}, \]</p>
+      <p>where \(H(P)\) is the entropy of \(P\). Perplexity therefore splits into two factors: \(e^{H(P)}\), how unpredictable the watermarked text is on its own terms, and \(e^{\mathrm{KL}(P\|Q)}\), the excess factor the watermark adds through its extra log-loss under the base model. (Measured against unwatermarked text, whose perplexity is \(e^{H(Q)}\), the ratio is \(e^{H(P)-H(Q)}\,e^{\mathrm{KL}(P\|Q)}\), so a watermark that lowers entropy can even score <em>below</em> the base model, as ArcMark does on Llama in Section 5.) Either way, a KL budget directly bounds the \(e^{\mathrm{KL}(P\|Q)}\) factor, the excess log-loss the watermark adds under the base model; the entropy factor is not budgeted, so the realized perplexity ratio can sit above or below \(e^{\varepsilon}\). SimpleMark lets you choose which divergence to budget: TV when the priority is a hard cap on detectability, KL when it is text quality.</p>
+
+      <h3>Security for the key you actually use</h3>
+      <p>Most existing watermarks, including the strongest multi-bit schemes we compare against, come with weaker security guarantees than this: they bound one particular statistical distance, or hold only against a specific detector, or hold only in a relaxed sense that does not constrain the distribution a deployed model actually samples from. SimpleMark's guarantee is stated for the key and message in use, at every step, and for any <em>f</em>-divergence. Writing \(Q_t\) for the base model's next-token distribution at step \(t\), \(M\) for the message and \(V_t\) for the realized key value, SimpleMark is <em>uniformly per-key ε-distortion-free</em>:</p>
+      <p>\[ D_f\big(P_{X_t\mid M=m,\,V_t=v}\;\big\|\;Q_t\big)\;\le\;\varepsilon \qquad\text{for every } t,\ m,\ v. \]</p>
+      <p>Under a TV budget this says that no detector, however clever, gains more than ε advantage from any single token of SimpleMark text, whatever the key and message; under a KL budget it caps the excess log-loss the watermark adds under the base model. The budget is a design knob: a constant for a practical deployment, or cryptographically negligible when the application demands it. Setting ε = 0 gives perfect distortion-freeness, and Section 3 shows why that extreme carries no information at all.</p>
+      <div class="takeaway">
+        <p class="label">Takeaway</p>
+        <p>SimpleMark's security is a per-token, per-key bound: for the actual key and message in use, the best possible detector gains at most ε advantage from any token under a TV budget. Section 5 measures this directly, and the realized advantage stays at or below ε.</p>
+      </div>
+
+    </section>
+
+    <!-- ============================ 3. PRICE ============================ -->
+    <section id="price">
+      <h2>3. Distortion is the price of embedding</h2>
+      <p>If per-key closeness is the right goal, why not demand ε = 0? Because then nothing can be embedded. This is the <em>channel-collapse</em> result (Proposition 1 in the paper). Think of the watermark as a communication channel: the input is the target state \(Z_t\) (a function of the message and the key), the output is the sampled token \(X_t\), and the message is recoverable only if the sampled token tells the decoder something about the target. The <em>mutual information</em> \(I(Z_t;X_t)\) measures exactly that: how many bits seeing \(X_t\) reveals about \(Z_t\). With ε = 0 the distribution of \(X_t\) is \(Q_t\) no matter what the target is, so the token reveals nothing, \(I(Z_t;X_t)=0\), and no encoder–decoder pair can recover even one bit. The <em>capacity</em> \(C(\varepsilon)\), roughly the most bits per token any scheme can reliably embed under budget ε (in the paper's idealized memoryless model), is also continuous at zero, so “almost distortion-free” buys almost nothing.</p>
+
+      <div class="takeaway">
+        <p class="label">Takeaway</p>
+        <p>Distortion is not a defect to engineer away; it is the price of embedding. The right design makes that price explicit and tunable, which is what a per-key <em>f</em>-divergence budget does.</p>
+      </div>
+
+      <p>How much does a budget buy? Theorem 1 is a <em>converse</em>, an upper bound that no scheme can beat: under a per-key TV budget ε, any sequence of schemes whose decoding error \(P_e^{(n)}\) vanishes must have rate (bits per token)</p>
+      <p>\[ R_n \;\le\; \frac1n\sum_{t=1}^n \tilde C_t(\varepsilon)\;+\;\frac{1+nR_nP_e^{(n)}}{n}, \]</p>
+      <p>where \(\tilde C_t(\varepsilon)\) is the largest mutual information \(I(Z_t;X_t)\) that any ε-feasible channel can create at step \(t\), and the second term is bookkeeping slack, \(1/n + R_nP_e^{(n)}\), that vanishes as the text grows and the error rate goes to zero. So in the limit the rate is capped by the average per-token capacity. In the simplest binary case (base distribution uniform on \(\{0,1\}\), two states that shift it by ±ε), the feasible mutual information is \(1-h_2(\tfrac12+\varepsilon)\), where \(h_2(p)=-p\log_2 p-(1-p)\log_2(1-p)\) is the <em>binary entropy</em>, the bits of uncertainty in a coin that lands heads with probability \(p\) (exactly 1 bit for a fair coin, less for a biased one). That comes to about 0.029 bits per token at ε = 0.1 and 0.119 at ε = 0.2, and \(\approx \tfrac{2}{\ln 2}\varepsilon^2\) for small ε. In this binary example the information grows <em>quadratically</em> in the budget: the first sliver of budget buys almost nothing, and each further increment buys more than the last. That slow start is not an artifact of the toy: for any fixed base distribution, every ε-feasible channel collapses onto \(Q_t\) as ε → 0, and the information available inside a TV ball of radius ε vanishes quadratically for small enough ε whatever the channel. What the toy understates is the constant. SimpleMark's own channel, where the key usually points at a low-probability token so that sampling it is strong evidence, is considerably more informative per unit of budget at the budgets we use. The paper works out only small examples in closed form (the binary coin, a ternary channel, and a single SimpleMark step over a three-token vocabulary; Appendix B.2), each a feasible channel whose information lower-bounds the per-step capacity, and leaves the general quantity \(\tilde C_t(\varepsilon)\) abstract.</p>
+
+      <figure class="fig" id="capfig">
+        <div class="svgwrap" id="cap-chart"></div>
+        <figcaption><b>In the binary toy channel, information grows quadratically in the budget.</b> Feasible per-token mutual information \(1-h_2(\tfrac12+\varepsilon)\) for the binary toy channel of the paper's Example 1 (Appendix B.2), as a function of the per-key TV budget ε. The marked points are ε = 0.1 and ε = 0.2.</figcaption>
+      </figure>
+
+    </section>
+
+    <!-- ============================ 4. METHOD ============================ -->
+    <section id="method">
+      <h2>4. SimpleMark, step by step</h2>
+      <p>SimpleMark is designed so that the per-key guarantee holds <em>by construction</em> at every token, and so that the embedding step costs \(O_q(1)\): a constant that depends only on \(q\), not on the vocabulary size. The whole pipeline fits in one figure.</p>
+
+      <figure class="fig">
+        <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/embedding_diagram.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/embedding_diagram.png" loading="lazy" decoding="async" alt="Three panels: (a) truncate the next-token distribution to the top q tokens and renormalize; (b) place one token per vertex of a simplex and let the key select the target vertex; (c) multiply the target token's probability by alpha and all others by beta, staying within the divergence budget, then sample." width="2400" height="866">
+        </picture>
+        <figcaption><b>Figure 1 of the paper.</b> (a) Truncate the model's next-token distribution to its top <em>q</em> tokens and renormalize to get \(Q_t\). (b) Put one token on each vertex of the \((q-1)\)-simplex (\(q\) equally spaced slots) using a keyed bijection \(\sigma_t\); the message symbol and the key select the target vertex \(Z_t\). (c) Tilt: multiply the target token's probability by α and every other token's by β, with the budget \(D_f(Q_t^\star\|Q_t)\le\varepsilon\) deciding how large α may be. Sample the next token from \(Q_t^\star\).</figcaption>
+      </figure>
+
+      <h3>Step 1: encode the message with an error-correcting code</h3>
+      <p>The message is \(k\) symbols, each a number in \(\{0,\dots,q-1\}\) (we use \(q=53\); choosing a prime makes arithmetic mod \(q\) a field, \(\mathbb F_q\), which is what the code needs). A low-density parity-check (LDPC) code, a standard error-correcting code with a public generator matrix \(G\), maps it to a length-\(n\) codeword \(C=m\cdot G\), one symbol per token to be generated. The code buys reliability, not secrecy: the secret is entirely in the key.</p>
+
+      <h3>Step 2: turn the key into a target</h3>
+      <p>At step \(t\), hashing the secret key together with the \(h\) previously generated tokens yields a shared secret \(S_t=(V_t,\sigma_t)\): a key value \(V_t\) uniform on \(\{0,\dots,q-1\}\) and a keyed bijection \(\sigma_t\) from the top-\(q\) tokens to the vertices of the simplex. Concretely: picture \(q\) labelled slots that are all equally far from one another (that is all “simplex” means here, and a “vertex” is one slot), and let \(\sigma_t\) be a secret, step-dependent shuffle that drops each of the \(q\) candidate tokens into its own slot. The <em>target vertex</em> is the slot selected by the message symbol \(C_t\), shifted by the secret key value \(V_t\):</p>
+      <p>\[ Z_t=(C_t+V_t)\bmod q, \]</p>
+      <p>and the target token is the one \(\sigma_t\) placed on it. Because \(V_t\) is uniform and secret, the target looks uniformly random to anyone without the key, while anyone holding the key can recompute it from the key and the preceding \(h\) tokens, so encoder and decoder never need to exchange anything beyond the text.</p>
+
+      <h3>Step 3: tilt the distribution, optimally</h3>
+      <p>We want to put as much probability as the budget allows on the target token. With the embedding cost \(d_t(x)=\mathbf 1[\sigma_t(x)\neq Z_t]\) (the discrete metric on the vertex set, since all vertices of a simplex are equidistant), the watermarked distribution is</p>
+      <p>\[ Q_t^\star\in\arg\min_{P\in\Delta(\mathcal S_t)}\ \sum_{x} P(x)\,d_t(x)\quad\text{s.t.}\quad D(P,Q_t)\le\varepsilon, \]</p>
+      <p>with \(D\) either \(d_{\mathrm{TV}}\) or \(\mathrm{KL}\). The cost is an indicator, so the objective depends on \(P\) only through the mass \(s\) it puts on the target. Let \(B\) be the base model's mass on the target. By the data-processing inequality any \(P\) with target mass \(s\) satisfies \(D(P,Q_t)\ge D(\mathrm{Bern}(s),\mathrm{Bern}(B))\), with equality when \(P\) keeps the base model's relative proportions inside the target and non-target groups. So the optimum is a <em>two-scalar tilt</em>:</p>
+
+      <div class="takeaway">
+        <p class="label">The SimpleMark embedding rule</p>
+        <p>\[ Q_t^\star(x)=\begin{cases}\alpha_t\,Q_t(x), & \sigma_t(x)=Z_t\\[2pt] \beta_t\,Q_t(x), & \sigma_t(x)\neq Z_t\end{cases}\qquad \alpha_t=\frac{s^\star}{B},\quad \beta_t=\frac{1-s^\star}{1-B}, \]</p>
+        <p>where \(s^\star=B+\min(\varepsilon,1-B)\) for a TV budget, and for a KL budget \(s^\star\) is the unique root in \([B,1]\) of \(s\log\frac sB+(1-s)\log\frac{1-s}{1-B}=\varepsilon\) (or \(s^\star=1\) when \(\varepsilon\ge\log\frac1B\)). By construction \(d_{\mathrm{TV}}(Q_t^\star,Q_t)=s^\star-B\), which equals \(\min(\varepsilon,1-B)\le\varepsilon\) under the TV budget; under the KL budget it is \(\mathrm{KL}(Q_t^\star\|Q_t)=\varepsilon\) that is enforced instead, and the TV distance may exceed \(\varepsilon\).</p>
+      </div>
+
+      <p>That is the entire embedding step: one scalar equation per token, no iterative optimal-transport solve and no auxiliary sampling, which is where the “fast” in the title comes from. In practice we also <em>cap</em> \(\alpha_t\) at some \(\alpha_{\max}\), so that a token the model considers very unlikely never receives a huge boost. On the paper's reasoning traces (ε = 0.05, \(\alpha_{\max}=1500\)) the cap binds on roughly 91% of tokens. Capping makes it less likely that a very unlikely token gets sampled and derails a reasoning chain, and at this setting we observe no loss in reasoning accuracy (Section 5). The cap is not free: when it binds, the realized divergence is below ε and less information is embedded per token, which is why, in the message-recovery figure, the capped TV ε = 0.05 curve (dashed) trails the uncapped TV ε = 0.05 curve. (The capped KL ε = 0.05 curve has no uncapped counterpart there, so its gap to the KL ε = 0.10 and 0.15 curves mostly reflects the smaller budget.)</p>
+
+      <h3>Step 4: decode by maximum likelihood</h3>
+      <p>Given the text, the decoder replays the model to recover each \(Q_t\), recomputes \((V_t,\sigma_t)\) from the key and the preceding tokens, and for each possible code symbol \(a\) asks how likely the observed token \(x_t\) was under the tilt that symbol would have produced: \(L_t(a)=\log Q^\star_{t,a}(x_t)\). Summing along a candidate codeword gives a score for each candidate message,</p>
+      <p>\[ \Lambda(\hat m)=\sum_{t=1}^n L_t\big(C_t(\hat m)\big),\qquad \hat M=\arg\max_{\hat m}\Lambda(\hat m). \]</p>
+      <p>The decoder uses the same channel law as the encoder, so it is matched to it. This maximum-likelihood rule is exactly what the decoder panel in the demo above computes, with the scores shown as posterior probabilities under a uniform prior over the eight messages. The paper also mentions a lighter <em>plurality</em> decoder that works from the received symbols alone, without the model's likelihoods, but does not detail it.</p>
+
+    </section>
+
+    <!-- ============================ 5. EXPERIMENTS ============================ -->
+    <section id="experiments">
+      <h2>5. Experiments</h2>
+      <p>We evaluate on <strong>Qwen3.5-9B-Base</strong> and <strong>Llama3.1-8B-Instruct</strong>, generating 300 tokens per trial on C4-RealNewslike prompts at temperature 1.0 and evaluating prefixes of 50, 100, …, 300 tokens, with 300 trials per point. SimpleMark uses \(q=53\) (so top-53 sampling); the baselines use top-50 sampling and their authors' settings. The baselines are <strong>ArcMark</strong><sup class="fn"><a href="#ref-15">[15]</a></sup> and <strong>BiMark</strong><sup class="fn"><a href="#ref-16">[16]</a></sup>, both with public implementations, state-of-the-art message recovery, and an (average-key) distortion-freeness guarantee. Use the tabs to explore each result.</p>
+
+      <div class="tabs" role="tablist" aria-label="Experimental results" id="exp-tabs">
+        <button role="tab" aria-selected="true" aria-controls="tab-detect" id="tabbtn-detect">Detectability</button>
+        <button role="tab" aria-selected="false" tabindex="-1" aria-controls="tab-ppl" id="tabbtn-ppl">Text quality</button>
+        <button role="tab" aria-selected="false" tabindex="-1" aria-controls="tab-reason" id="tabbtn-reason">Reasoning</button>
+        <button role="tab" aria-selected="false" tabindex="-1" aria-controls="tab-recover" id="tabbtn-recover">Message recovery</button>
+        <button role="tab" aria-selected="false" tabindex="-1" aria-controls="tab-zero" id="tabbtn-zero">Zero-bit detection</button>
+        <button role="tab" aria-selected="false" tabindex="-1" aria-controls="tab-robust" id="tabbtn-robust">Robustness</button>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-detect" aria-labelledby="tabbtn-detect">
+        <p><strong>How much can the best detector learn from one token?</strong> We estimate the next-token distribution of each scheme empirically (10 prompts × 10,000 samples per prompt) and compute its TV distance from the unwatermarked distribution, which is exactly the maximum advantage of any single-token distinguisher. Even the unwatermarked model shows a small nonzero value from sampling noise.</p>
+        <figure class="fig">
+          <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/tv_distance.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/tv_distance.png" loading="lazy" decoding="async" alt="Bar chart of empirical TV distance from the base next-token distribution. Unwatermarked and all SimpleMark settings are near zero (at most the budget epsilon within the top-k support, plus the small top-k tail mass against the untruncated model); BiMark and ArcMark are around 0.5 to 0.65." width="2200" height="663">
+        </picture>
+          <figcaption><b>Empirical maximum distinguishing advantage per token</b> (Figure 2 of the paper). Solid bars: Qwen3.5-9B-Base; hatched: Llama3.1-8B-Instruct. Left: within the sampler's top-<em>k</em> support. Right: against the untruncated base model, which adds the tail mass removed by top-<em>k</em> truncation. Within the support, SimpleMark's advantage is at most its budget ε. Against the untruncated model it is at most ε plus the tail mass that every top-<em>k</em> sampler, the unwatermarked one included, already pays (in the figure it stays well under that sum: 0.115 for TV ε = 0.10 on Qwen, against 0.10 + 0.059). ArcMark gives the detector a 46–57% advantage and BiMark 51–65%, despite both carrying their own, weaker distortion-freeness guarantees.</figcaption>
+        </figure>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-ppl" aria-labelledby="tabbtn-ppl" hidden>
+        <p><strong>Perplexity.</strong> Since \(\mathrm{PPL}=e^{H(P)}e^{\mathrm{KL}(P\|Q)}\), a KL budget is a direct handle on the \(e^{\mathrm{KL}}\) factor, the part of perplexity the watermark controls. As expected, SimpleMark under a small KL budget tracks the unwatermarked perplexity most closely at every length.</p>
+        <figure class="fig">
+          <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/perplexity.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/perplexity.png" loading="lazy" decoding="async" alt="Perplexity versus text length for both models. SimpleMark with KL budget 0.01 is closest to the unwatermarked curve; BiMark is highest; ArcMark is lowest on Llama." width="2200" height="803">
+        </picture>
+          <figcaption><b>Perplexity for 50–300 token outputs</b> (Figure 3 of the paper), scored by the base model. SimpleMark with KL ε = 0.01 is consistently closest to the unwatermarked output. (ArcMark's perplexity falls <em>below</em> the unwatermarked curve on Llama. Lower-than-base perplexity is not a quality gain in itself: the goal is to stay close to the base model, not below it.)</figcaption>
+        </figure>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-reason" aria-labelledby="tabbtn-reason" hidden>
+        <p><strong>Does the watermark hurt reasoning?</strong> We run Qwen3.5-9B in thinking mode (temperature 0.6) on GSM8K, GPQA-Diamond, LiveCodeBench, and AIME 2024, one sample per problem, identical problem sets for every scheme, embedding a 3-bit or 8-bit message at ε = 0.05 with \(\alpha_{\max}=1500\). Counts are problems solved.</p>
+        <div class="tbl-scroll">
+        <table class="tbl">
+          <thead><tr><th>Scheme</th><th class="num">GSM8K (300)</th><th class="num">GPQA-D (198)</th><th class="num">LCB (100)</th><th class="num">AIME 2024 (30)</th></tr></thead>
+          <tbody>
+            <tr class="group"><td colspan="5">3-bit payload</td></tr>
+            <tr class="hl"><td>SimpleMark TV (ε=0.05, α<sub>max</sub>=1500)</td><td class="num">278</td><td class="num">112</td><td class="num">33</td><td class="num">8</td></tr>
+            <tr class="hl"><td>SimpleMark KL (ε=0.05, α<sub>max</sub>=1500)</td><td class="num">274</td><td class="num">108</td><td class="num">40</td><td class="num">9</td></tr>
+            <tr><td>BiMark</td><td class="num">270</td><td class="num">107</td><td class="num">33</td><td class="num">11</td></tr>
+            <tr><td>ArcMark</td><td class="num">272</td><td class="num">111</td><td class="num">35</td><td class="num">10</td></tr>
+            <tr><td>Unwatermarked</td><td class="num">272</td><td class="num">110</td><td class="num">36</td><td class="num">8</td></tr>
+            <tr class="group"><td colspan="5">8-bit payload</td></tr>
+            <tr class="hl"><td>SimpleMark TV (ε=0.05, α<sub>max</sub>=1500)</td><td class="num">275</td><td class="num">103</td><td class="num">38</td><td class="num">9</td></tr>
+            <tr class="hl"><td>SimpleMark KL (ε=0.05, α<sub>max</sub>=1500)</td><td class="num">273</td><td class="num">102</td><td class="num">41</td><td class="num">8</td></tr>
+            <tr><td>BiMark</td><td class="num">279</td><td class="num">94</td><td class="num">33</td><td class="num">8</td></tr>
+            <tr><td>ArcMark</td><td class="num">274</td><td class="num">109</td><td class="num">40</td><td class="num">7</td></tr>
+            <tr><td>Unwatermarked</td><td class="num">272</td><td class="num">110</td><td class="num">36</td><td class="num">8</td></tr>
+          </tbody>
+        </table>
+        </div>
+        <p class="small">Table 2 of the paper. LiveCodeBench is graded on public test cases only, so its counts are comparable across schemes but not to published leaderboards. Differences between schemes are within run-to-run noise at these sample sizes: the point is the absence of degradation. Llama3.1-8B-Instruct results (Table 3 in the paper) tell the same story.</p>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-recover" aria-labelledby="tabbtn-recover" hidden>
+        <p><strong>Can we read the message back?</strong> We report <em>message</em> accuracy (the whole payload exactly right), since a single bit error can change the meaning of an ID. Under a TV budget of ε = 0.15 SimpleMark recovers the message from shorter texts than the baselines (higher accuracy at a given number of tokens; this is about how much text the decoder needs, not how long it takes to run), even though those baselines are designed to maximize recovery and pay for it with the large per-token deviations shown in the Detectability tab. The KL ε = 0.15 variant trails ArcMark over the first 100 tokens on the 8-bit payload and the first 150 tokens on the 16-bit payload before catching up by 200 tokens. At the smaller, more practical budgets it remains competitive: at ε = 0.05 an 8-bit message is recovered reliably within 200–300 tokens, and at ε = 0.01 the decoder simply needs more text (500–1000 tokens; an 8-bit message climbs from about 75% at 500 tokens to about 95% at 1000, and a 16-bit one from about 45% to about 87%, Figure 5 in the paper).</p>
+        <figure class="fig">
+          <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/message_recovery.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/message_recovery.png" loading="lazy" decoding="async" alt="Six panels of message accuracy versus text length for 3, 8, and 16-bit payloads on Qwen (top) and Llama (bottom). SimpleMark with a TV budget of epsilon 0.15 reaches near 100% with the fewest tokens; smaller budgets rise more slowly." width="2200" height="1271">
+        </picture>
+          <figcaption><b>Message recovery versus prefix length</b> (Figure 4 of the paper) for 3-, 8-, and 16-bit payloads, with ε ∈ {0.05, 0.10, 0.15} under TV and KL budgets, on Qwen3.5-9B-Base (top) and Llama3.1-8B-Instruct (bottom). Dashed SimpleMark curves use the \(\alpha_{\max}=1500\) cap.</figcaption>
+        </figure>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-zero" aria-labelledby="tabbtn-zero" hidden>
+        <p><strong>Zero-bit detection.</strong> True positive rate of the keyed detector as a function of text length at false positive rates of \(10^{-2}\), \(10^{-6}\) and \(10^{-12}\). Fast detection is not an unambiguous virtue: the keyed detector's power is fueled by the same distributional deviation an adversary can exploit. The baselines detect quickly precisely because their per-token deviations are large; SimpleMark caps that deviation at ε, so lower budgets detect more slowly by design.</p>
+        <figure class="fig">
+          <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/zero_bit_detection.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/zero_bit_detection.png" loading="lazy" decoding="async" alt="True positive rate versus text length at three false positive rates for Qwen (top) and Llama (bottom). Higher SimpleMark budgets match or exceed the baselines; lower budgets detect more slowly." width="2200" height="1285">
+        </picture>
+          <figcaption><b>Zero-bit detection</b> (Figure 7 of the paper). At higher budgets SimpleMark matches or exceeds the baselines; at lower budgets it stays closer to the unwatermarked distribution and therefore detects more slowly.</figcaption>
+        </figure>
+      </div>
+
+      <div class="tab-panel" role="tabpanel" id="tab-robust" aria-labelledby="tabbtn-robust" hidden>
+        <p><strong>Token substitution.</strong> We replace a percentage of the tokens of a 300-token output with random vocabulary words and try to decode. Recovery degrades roughly exponentially with the substitution rate, as expected from a keyed context hash: each substituted token corrupts its own symbol and desynchronizes the key for the next \(h\) positions.</p>
+        <figure class="fig">
+          <picture>
+          <source srcset="../../assets/2026-10-06-simplemark/substitution_robustness.webp" type="image/webp">
+          <img src="../../assets/2026-10-06-simplemark/substitution_robustness.png" loading="lazy" decoding="async" alt="Message accuracy versus substitution rate (0 to 20 percent) for 3, 8, and 16-bit payloads, two budgets, and context windows h of 1 to 3, on both models." width="2200" height="1210">
+        </picture>
+          <figcaption><b>Robustness to random token substitution</b> (Figure 6 of the paper) for ε ∈ {0.05, 0.15} and context hashing windows \(h\in\{1,2,3\}\).</figcaption>
+        </figure>
+      </div>
+
+      <p style="margin-top:14px">Two more results live in the appendix. First, an ablation with \(q=29\) instead of 53 (simplex, LDPC field size, and top-\(k\) all shrunk together): perplexity stays close to the unwatermarked baseline at both sizes, and message recovery is similar at 3 and 8 bits, though at 16 bits \(q=29\) lags by up to roughly 25 points at 100–150 tokens for the smallest budgets. The GSM8K sweep over \(\alpha_{\max}\in\{200,500,1000\}\) (16-bit payload, Qwen3.5-9B-Base) shows that the cap matters. It is a harder setting than the reasoning table (base model rather than thinking mode, 16-bit rather than 3- or 8-bit, an unwatermarked accuracy of about 65% rather than 91%), and the sweep stops at \(\alpha_{\max}=1000\), so it does not test the \(\alpha_{\max}=1500\) operating point. Within it, TV ε = 0.05 accuracy falls as the cap loosens: for \(q=53\) from slightly above the unwatermarked model at \(\alpha_{\max}=200\) to roughly 5–9 points below at 500 and 1000, and for \(q=29\) from a few points below at 200 to 12–14 points below at 500 and 1000, while the ε = 0.01 runs and the KL runs stay within about five points of the baseline or above it. That is the empirical case for a tight cap. Second, long-form decoding at ε ∈ {0.01, 0.05} on 500–1000 tokens, where the decoder still recovers the message accurately.</p>
+    </section>
+
+
+    <!-- ============================ 7. CONCLUSION ============================ -->
+    <section id="conclusion">
+      <h2>6. Conclusion</h2>
+      <p>Multi-bit text watermarking is a constrained communication problem, and the constraint should be stated for the key you actually use. Once it is, the picture is clean: exact per-key distortion-freeness gives zero capacity, a nonzero <em>f</em>-divergence budget buys a tunable rate–detectability tradeoff, and the optimal way to spend a budget on a single token is a two-number tilt. SimpleMark packages that tilt with an error-correcting code and a matched likelihood decoder. In experiments it cuts the best detector's per-token advantage from roughly 50% down to the budget ε, while keeping message recovery, perplexity, and reasoning performance competitive with the strongest prior schemes. We hope the framework gives designers of future watermarks a common yardstick: say what your ε is, and for which divergence.</p>
+    </section>
+
+    <!-- ============================ CITE ============================ -->
+    <section id="cite">
+      <h2>Citation</h2>
+      <p>If you find this work useful, please cite:</p>
+      <div class="bibtex">
+        <button type="button" class="copy" id="bib-copy">Copy</button>
+<pre><code id="bib-text">@misc{kim2026simplemark,
+  title         = {SimpleMark: Fast Multi-Bit Text Watermarking under $f$-Divergence Constraints},
+  author        = {Benjamin D. Kim and Wanrong Zhang and Weitong Ruan and Lav R. Varshney and Daniel Alabi},
+  year          = {2026},
+  eprint        = {2610.05712},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CR},
+  url           = {https://arxiv.org/abs/2610.05712},
+}</code></pre>
+      </div>
+    </section>
+
+
+    <!-- ============================ REFERENCES ============================ -->
+    <section class="refs" id="references">
+      <h2>References</h2>
+      <ol>
+        <li id="ref-1">D. Seetharaman, M. Barnum. <a href="https://www.wsj.com/tech/ai/openai-tool-chatgpt-cheating-writing-135b755a">There's a Tool to Catch Students Cheating With ChatGPT. OpenAI Hasn't Released It.</a> The Wall Street Journal, August 4, 2024.</li>
+        <li id="ref-2">I. Mehta. <a href="https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/">OpenAI will start watermarking ChatGPT's text in the EU</a>. TechCrunch, October 5, 2026.</li>
+        <li id="ref-3">S. Dathathri, A. See, S. Ghaisas, et al. <a href="https://www.nature.com/articles/s41586-024-08025-4">Scalable watermarking for identifying large language model outputs</a>. Nature 634, 818–823, 2024.</li>
+        <li id="ref-4">Anthropic. <a href="https://www.anthropic.com/news/claude-text-watermark">How Claude's text watermarking works</a>. August 2026.</li>
+        <li id="ref-5">K. Krishna, Y. Song, M. Karpinska, J. Wieting, M. Iyyer. <a href="https://arxiv.org/abs/2303.13408">Paraphrasing evades detectors of AI-generated text, but retrieval is an effective defense</a>. NeurIPS 2023.</li>
+        <li id="ref-6">Y. Cheng, V. S. Sadasivan, M. Saberi, S. Saha, S. Feizi. <a href="https://arxiv.org/abs/2506.07001">Adversarial Paraphrasing: A Universal Attack for Humanizing AI-Generated Text</a>. 2025.</li>
+        <li id="ref-7">J. Kirchenbauer, J. Geiping, Y. Wen, J. Katz, I. Miers, T. Goldstein. <a href="https://arxiv.org/abs/2301.10226">A Watermark for Large Language Models</a>. ICML 2023.</li>
+        <li id="ref-8">M. Christ, S. Gunn, O. Zamir. <a href="https://arxiv.org/abs/2306.09194">Undetectable Watermarks for Language Models</a>. 2023.</li>
+        <li id="ref-9">R. Kuditipudi, J. Thickstun, T. Hashimoto, P. Liang. <a href="https://arxiv.org/abs/2307.15593">Robust Distortion-free Watermarks for Language Models</a>. TMLR 2024.</li>
+        <li id="ref-10">A. Cohen, A. Hoover, G. Schoenbach. <a href="https://arxiv.org/abs/2405.11109">Watermarking Language Models for Many Adaptive Users</a>. IEEE S&amp;P 2025.</li>
+        <li id="ref-11">W. Qu, W. Zheng, T. Tao, D. Yin, Y. Jiang, Z. Tian, W. Zou, J. Jia, J. Zhang. <a href="https://arxiv.org/abs/2401.16820">Provably Robust Multi-bit Watermarking for AI-generated Text</a>. USENIX Security 2025.</li>
+        <li id="ref-12">H. Zhang, B. L. Edelman, D. Francati, D. Venturi, G. Ateniese, B. Barak. <a href="https://arxiv.org/abs/2311.04378">Watermarks in the Sand: Impossibility of Strong Watermarking for Generative Models</a>. ICML 2024.</li>
+        <li id="ref-13">H. Chang, H. Hassani, R. Shokri. Watermark Smoothing Attacks against Language Models. Findings of EMNLP 2025.</li>
+        <li id="ref-14">J. Katz, Y. Lindell. Introduction to Modern Cryptography, 2nd ed. Chapman &amp; Hall/CRC, 2014.</li>
+        <li id="ref-15">A. Gilani, S. Vithana, C. X. Long, O. Kosut, L. Sankar, F. P. Calmon. <a href="https://arxiv.org/abs/2602.07235">ArcMark: Distortion-Free Multi-Byte LLM Watermark via Optimal Transport</a>. 2026.</li>
+        <li id="ref-16">X. Feng, H. Zhang, Y. Zhang, L. Y. Zhang, S. Pan. <a href="https://arxiv.org/abs/2506.21602">BiMark: Unbiased Multilayer Watermarking for Large Language Models</a>. ICML 2025.</li>
+      </ol>
+    </section>
+
+  </main>
+
+  <script src="simplemark-demo.js"></script>
+  <script src="hero-anim.js"></script>
+  <script>
+  (function () {
+    // ---- tabs (ARIA tab pattern: arrow keys move between tabs) ----
+    var tabs = Array.prototype.slice.call(document.querySelectorAll('#exp-tabs [role="tab"]'));
+    function activate(btn, focus) {
+      tabs.forEach(function (b) {
+        var on = b === btn;
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+        b.tabIndex = on ? 0 : -1;
+        var panel = document.getElementById(b.getAttribute('aria-controls'));
+        if (panel) { if (on) panel.removeAttribute('hidden'); else panel.setAttribute('hidden', ''); }
+      });
+      if (focus) btn.focus();
+    }
+    tabs.forEach(function (btn, i) {
+      btn.addEventListener('click', function () { activate(btn, false); });
+      btn.addEventListener('keydown', function (e) {
+        var j = null;
+        if (e.key === 'ArrowRight') j = (i + 1) % tabs.length;
+        else if (e.key === 'ArrowLeft') j = (i - 1 + tabs.length) % tabs.length;
+        else if (e.key === 'Home') j = 0;
+        else if (e.key === 'End') j = tabs.length - 1;
+        if (j !== null) { e.preventDefault(); activate(tabs[j], true); }
+      });
+    });
+    // ---- bibtex copy ----
+    var copy = document.getElementById('bib-copy');
+    if (copy) copy.addEventListener('click', function () {
+      var txt = document.getElementById('bib-text').textContent;
+      function done() { copy.textContent = 'Copied'; setTimeout(function () { copy.textContent = 'Copy'; }, 1500); }
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done, done);
+      else { var ta = document.createElement('textarea'); ta.value = txt; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); } catch (e) {} document.body.removeChild(ta); done(); }
+    });
+    // ---- capacity chart: 1 - h2(1/2 + eps) ----
+    var wrap = document.getElementById('cap-chart');
+    if (wrap) {
+      var NS = 'http://www.w3.org/2000/svg';
+      var W = 520, H = 262, pl = 46, pr = 14, pt = 30, pb = 40, iw = W - pl - pr, ih = H - pt - pb;
+      function h2(p) { function f(a) { return a <= 0 ? 0 : -a * Math.log2(a); } return f(p) + f(1 - p); }
+      function I(e) { return 1 - h2(0.5 + e); }
+      function X(e) { return pl + (e / 0.5) * iw; }
+      function Y(v) { return pt + ih - v * ih; }
+      var svg = document.createElementNS(NS, 'svg'); svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H); svg.setAttribute('role', 'img');
+      var t = document.createElementNS(NS, 'title'); t.textContent = 'Feasible mutual information 1 minus binary entropy of one half plus epsilon, versus epsilon'; svg.appendChild(t);
+      function el(tag, a, txt) { var e = document.createElementNS(NS, tag); for (var k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; svg.appendChild(e); return e; }
+      [0, 0.25, 0.5, 0.75, 1].forEach(function (g) { el('line', { x1: pl, x2: W - pr, y1: Y(g), y2: Y(g), stroke: '#eee' }); el('text', { x: pl - 6, y: Y(g) + 3.5, 'text-anchor': 'end', 'font-size': 10, fill: '#6b7280' }, g.toFixed(2)); });
+      [0, 0.1, 0.2, 0.3, 0.4, 0.5].forEach(function (g) { el('line', { x1: X(g), x2: X(g), y1: Y(0), y2: Y(0) + 4, stroke: '#999' }); el('text', { x: X(g), y: Y(0) + 16, 'text-anchor': 'middle', 'font-size': 10, fill: '#555' }, g.toFixed(1)); });
+      el('line', { x1: pl, x2: W - pr, y1: Y(0), y2: Y(0), stroke: '#999' });
+      el('line', { x1: pl, x2: pl, y1: pt, y2: Y(0), stroke: '#999' });
+      var d = '', n = 100;
+      for (var i = 0; i <= n; i++) { var e = 0.5 * i / n; d += (i ? ' L' : 'M') + X(e).toFixed(1) + ' ' + Y(I(e)).toFixed(1); }
+      el('path', { d: d, fill: 'none', stroke: '#5b5fc7', 'stroke-width': 2.2 });
+      var dq = '';
+      for (var j = 0; j <= n; j++) { var e2 = 0.5 * j / n; var v = Math.min(1, (2 / Math.LN2) * e2 * e2); dq += (j ? ' L' : 'M') + X(e2).toFixed(1) + ' ' + Y(v).toFixed(1); }
+      el('path', { d: dq, fill: 'none', stroke: '#c9463a', 'stroke-width': 1.4, 'stroke-dasharray': '4 3' });
+      [[0.1, 'ε = 0.1: 0.029 bits', 0, -12, 'middle'], [0.2, 'ε = 0.2: 0.119 bits', 10, 16, 'start']].forEach(function (p) {
+        el('circle', { cx: X(p[0]), cy: Y(I(p[0])), r: 4, fill: '#222' });
+        el('text', { x: X(p[0]) + p[2], y: Y(I(p[0])) + p[3], 'text-anchor': p[4], 'font-size': 10.5, fill: '#222' }, p[1]);
+      });
+      el('text', { x: W - pr, y: Y(0) + 32, 'text-anchor': 'end', 'font-size': 10.5, fill: '#555' }, 'per-key TV budget ε');
+      el('text', { x: pl - 40, y: 14, 'font-size': 10.5, fill: '#555' }, 'bits / token (feasible mutual information)');
+      el('text', { x: X(0.37), y: Y(0.5) + 4, 'text-anchor': 'end', 'font-size': 10.5, fill: '#5b5fc7', 'font-weight': 700 }, '1 − h₂(½ + ε)');
+      el('line', { x1: X(0.375), y1: Y(0.5), x2: X(0.405), y2: Y(I(0.405)), stroke: '#5b5fc7', 'stroke-width': 1 });
+      el('text', { x: X(0.5), y: Y(0.3) + 4, 'text-anchor': 'end', 'font-size': 10.5, fill: '#c9463a' }, 'small-ε approximation (2 / ln 2) ε²');
+      wrap.appendChild(svg);
+    }
+  })();
+  </script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/katex.min.js"></script>
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.11/contrib/auto-render.min.js"
+          onload="renderMathInElement(document.body,{delimiters:[{left:'\\[',right:'\\]',display:true},{left:'\\(',right:'\\)',display:false}],throwOnError:false});"></script>
+</body>
+</html>

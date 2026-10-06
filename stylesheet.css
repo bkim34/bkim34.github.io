@@ -219,3 +219,37 @@ span.highlight {
     margin: 0 auto 8px;
   }
 }
+
+/* ---------- site nav (shared with blog pages; keep in sync with blog/blog.css) ---------- */
+.site-nav {
+  box-sizing: border-box;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 14px 20px 10px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-family: 'Lato', Verdana, Helvetica, sans-serif;
+  font-size: 14px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.site-nav .brand { color: #222; font-weight: 700; font-size: 15px; }
+.site-nav .brand:hover { color: #f09228; }
+.site-nav .links a { margin-left: 18px; }
+.site-nav .links a.active { color: #222; font-weight: 700; }
+
+/* ---------- publication tags ---------- */
+.pub-tags { display: inline-flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.pub-tag {
+  display: inline-block;
+  padding: 1px 9px;
+  border: 1px solid #d0d4da;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 18px;
+  color: #1772d0;
+  background: #fff;
+}
+.pub-tag:hover, .pub-tag:focus { color: #f09228; border-color: #f09228; }
