@@ -1,0 +1,226 @@
+SIMPLEMARK: FAST MULTI-BIT TEXT WATERMARKING UNDER F-DIVERGENCE CONSTRAINTS
+
+Benjamin D. Kim, Wanrong Zhang, Weitong Ruan, Lav R. Varshney, Daniel Alabi
+arXiv preprint, October 2026
+In collaboration with UIUC and Amazon AGI.
+Blog post by Ben Kim · October 6, 2026 · about 12 minutes
+Figure caption: SimpleMark in one loop. For every token, the secret key picks a target token among the model's top candidate words, each placed on a simplex (1), the next-word probabilities are tilted toward that target by at most a budget ε (2), and a word is sampled from the tilted distribution (3). Sections 1–4 explain each step, followed by an interactive demo.
+
+--- box ---
+TL;DR
+We study multi-bit watermarking of language-model text (hiding a message such as a user or model ID in generated text) as communication over a constrained channel, and introduce SimpleMark, a watermark with three properties:
+
+1. Tunable security and distortion. Every next-token distribution the watermarked model samples from stays within an f-divergence budget ε (total variation or KL in this work) of the base model distribution, for the key and message in use, a stronger guarantee than existing schemes provide. With TV, the best possible detector gains at most ε advantage per token.
+2. Embedding the watermark is $O_q(1)$. Putting a message symbol into a token is a simple optimal transport tilt of the next-token distribution: scale the target token's probability by a constant α and the other tokens by β. An error-correcting (LDPC) code makes the message more robust to not sampling the target token, and a maximum-likelihood decoder is used for decoding.
+3. The theory proves what the budget buys. Exact per-key distortion-freeness forces zero capacity: no scheme can reliably embed even one bit. A nonzero budget buys capacity, and we bound the achievable rate. Empirically, at a next-token level, SimpleMark is far less detectable than prior multi-bit schemes while competitive in all other performance categories.
+
+--- end box ---
+
+1. WHY WATERMARK TEXT, AND WHY WITH A MESSAGE?
+
+Language models write fluent text at scale, and with rapid developments in technology it has become increasingly difficult to distinguish what was written by AI. A solution to this is for the language models to output a text watermark, a statistical fingerprint in the output sampling process. Watermarks are embedded in the AI-generated output by a model slightly preferring a set or a singular token over the rest of the tokens in the sampling process, in a pattern driven by a secret key. A user who holds this secret key can check for the embedded watermark, and ideally this pattern is invisible to readers and to anyone without the key.
+
+Language model providers have been wary of changing their models' outputs to embed these watermarks for years now. OpenAI built a text watermark for ChatGPT but held it back for years after a survey found that 30% of users said they would use their model less if its text was to be watermarked.[1] In October 2026, OpenAI announced that it would watermark its language models in the European Union to comply with the transparency rules in the EU AI Act, leaving the API watermark off by default everywhere else. Moreover, experiments on their watermark showed that replacing a quarter of the generated text with synonyms dropped their detection rate to 17%.[2] Google DeepMind has used the watermark SynthID-Text in Gemini since 2024. It was built around a “non-distortionary” sampling mode and tested on roughly 20 million live Gemini responses to show that users would not notice a difference when their text was being watermarked.[3] Anthropic also began watermarking Claude's text in August 2026 under the same EU AI Act regulations. They too stressed that the watermark does not change the meaning, quality, or readability of a response.[4] In parallel, a category of tools to both remove watermarks and “humanize” AI text has emerged, mostly through paraphrasing.[5],[6] As a result, providers and users will only accept a watermark if its effect on the text is provably small. One solution would be if the distortion a watermark introduces were something that can be bounded or parameterized, rather than measured after the fact.
+
+The first generation of LLM watermarks[7],[8],[9] is zero-bit: the detector answers one yes/no question, “did AI or my model generate this text?” However, there are several use cases where one bit of information may not be enough. A provider may want to recover which user, which model version, which timestamp, or which policy tag produced a text.[10],[11] These use cases introduce the need for multi-bit watermarking, where the text carries a message.
+
+Multi-bit watermarking has a built-in tension. Every bit you embed shows up as bias in the model's word choices. More bias makes the message easier to recover, but it also makes the text statistically different from unwatermarked text, which is exactly what an adversary looks for.[12],[13] The question we set out to answer is: how much information can you embed while adhering to a statistical distance of the unwatermarked model, and what notions of distance actually protect you?
+
+2. WHAT SHOULD “UNDETECTABLE” MEAN?
+
+Consider the adversary in this setting as a distinguisher: it looks at a token (or text) and distinguishes whether it is watermarked or not. Its advantage is the distinguisher's TPR − FPR. In plain words, this means how much more often the distinguisher claims “watermarked” on watermarked samples than on clean ones. The best possible advantage any distinguisher can have between two distributions is the total variation (TV) distance between the two distributions:[14]
+
+    \sup_{\mathcal D}\Big|\Pr_{X\sim P}[\mathcal D(X)=1]-\Pr_{X\sim Q}[\mathcal D(X)=1]\Big| \;=\; d_{\mathrm{TV}}(P,Q) \;=\; \tfrac12\sum_x |P(x)-Q(x)|.
+
+By bounding the TV distance between the watermarked next-token distribution and the base model's next-token distribution we get a quantifiable security guarantee applicable to every detector. Ideally, we would like this distance to be zero (or negligibly small) so that no information about a watermark can be gained, but we show in a later section that this leads to zero embedding capacity.
+
+Total variation distance is a member of the f-divergence family, $D_f(P\|Q)=\sum_x Q(x)\,f\!\big(P(x)/Q(x)\big)$ for a convex $f$ with $f(1)=0$. Another f-divergence in this family is the Kullback–Leibler (KL) divergence $\mathrm{KL}(P\|Q)=\sum_x P(x)\log\frac{P(x)}{Q(x)}$. In relation to language model outputs, the KL divergence relates directly to perplexity, the text-quality metric. Perplexity is a metric of how surprised the model is by its output, and is commonly used to benchmark text quality. If the watermarked model samples from $P$ and we score the text with the base model $Q$, then
+
+    \mathrm{PPL} \;=\; \exp\!\big(\mathbb E_{x\sim P}[-\log Q(x)]\big) \;=\; e^{H(P)}\, e^{\mathrm{KL}(P\|Q)},
+
+where $H(P)$ is the entropy of $P$. Perplexity splits into two factors: $e^{H(P)}$, how unpredictable the watermarked text is independent of the base model, and $e^{\mathrm{KL}(P\|Q)}$, the excess quantity the watermark adds through its log-loss under the base model. A KL budget directly bounds the $e^{\mathrm{KL}(P\|Q)}$ factor, while also having a quantifiable shift on $e^{H(P)}$ per token. SimpleMark lets you choose which f-divergence to budget, with the two used here being TV when the priority is a hard cap on detectability and KL when it is text quality.
+
+Security for the key in use
+
+Most existing watermarks, including the SOTA multi-bit schemes we compare against, come with weaker security guarantees than this. These schemes bound one particular statistical distance, or hold only against a specific detector, or hold only in a relaxed sense that does not constrain the distribution a deployed model actually samples from. SimpleMark's guarantee is stated for the key and message in use, at every step, and for any f-divergence (TV or KL here). Writing $Q_t$ for the base model's next-token distribution at step $t$, $M$ for the message and $V_t$ for the realized key value, we define SimpleMark as uniformly per-key ε-distortion-free:
+
+    D_f\big(P_{X_t\mid M=m,\,V_t=v}\;\big\|\;Q_t\big)\;\le\;\varepsilon \qquad\text{for every } t,\ m,\ v.
+
+When considering a TV distance budget, our uniformly per-key distortion-free definition implies that no adversarial distinguisher gains more than ε advantage from any single token of SimpleMark, regardless of the key and message. The ε f-divergence budget can be considered a situational parameter: a small constant for a practical deployment, or cryptographically negligible when the application demands it. Setting ε = 0 gives perfect distortion-freeness, and Section 3 shows why that extreme carries no information (zero embedding capacity).
+
+--- box ---
+TAKEAWAY
+SimpleMark's security is a per-token, per-key bound for the actual key and message in use. The strongest distinguishing attacker gains at most ε advantage from any token under a TV budget. Section 5 measures this in practice, and the empirical advantage stays at or below ε.
+
+--- end box ---
+
+3. DISTORTION IS THE PRICE OF EMBEDDING A WATERMARK
+
+If per-key closeness is the right goal, why not set ε = 0? Because then nothing can be embedded. This is the channel-collapse result (Proposition 1 in the paper). Think of the watermark as a communication channel: the input is the target state $Z_t$ (a function of the message and the key), the output is the sampled token $X_t$, and the message is recoverable only if the sampled token tells the decoder something about the target. The mutual information $I(Z_t;X_t)$ measures exactly that: how many bits seeing $X_t$ reveals about $Z_t$. With ε = 0 the distribution of $X_t$ is $Q_t$ no matter what the target is, so the token reveals nothing, $I(Z_t;X_t)=0$. This means that no encoder–decoder pair is able to reliably recover even a single bit! For watermarking, the capacity $C(\varepsilon)$ is defined to be the most bits per token one can reliably embed under an f-divergence budget ε (simplified in the paper to an idealized memoryless model).
+
+--- box ---
+TAKEAWAY
+Distortion is required: it is the price of embedding, and SimpleMark makes that price explicit and tunable.
+
+--- end box ---
+
+How much does an ε budget grant us in terms of embedding capacity? Theorem 1 in our paper solves for the ceiling in a simplified memoryless channel setting: no scheme can reliably embed more than the average per-token capacity $\tilde C_t(\varepsilon)$, the most information in a watermark any ε-feasible tilt can carry at step $t$. Consider a simple case to illustrate this ceiling. If the base distribution is a fair coin and the key may nudge it by ±ε, the information per token is $1-h_2(\tfrac12+\varepsilon)\approx\tfrac{2}{\ln 2}\varepsilon^2$: about 0.03 bits at ε = 0.1 and 0.12 at ε = 0.2. At smaller budgets this information grows quadratically in ε, as illustrated below. SimpleMark's channel is more informative per unit of budget than this toy case, but shares the quadratic growth of capacity. More complex theoretical results, such as modeling a non-memoryless channel to replicate an LLM setting, are left for future work.
+
+Figure caption: Information grows quadratically in the budget. Bits per token for the binary toy channel (Example 1 in the paper) as a function of the per-key TV budget ε; the dashed curve is the small-ε approximation $\tfrac{2}{\ln 2}\varepsilon^2$. Marked points: ε = 0.1 and ε = 0.2.
+
+4. SIMPLEMARK, STEP BY STEP
+
+SimpleMark is designed so that the per-key guarantee holds by construction at every token, and so that the embedding step costs $O_q(1)$: a constant that depends only on $q$, not on the vocabulary size. The whole pipeline fits in one figure.
+
+Figure caption: SimpleMark embedding procedure. Begin by truncating the model's next-token distribution to its top q tokens and renormalizing to get $Q_t$. Next, place one token on each vertex of the $(q-1)$-simplex ($q$ equally spaced slots) using a keyed bijection $\sigma_t$. Calculate the target vertex and corresponding token $Z_t$ using the message symbol and key. Lastly, tilt the distribution towards the target token by multiplying the target token's probability by α and every other token's by β. The budget $D_f(Q_t^\star\|Q_t)\le\varepsilon$ decides how large α may be. Sample the next token from $Q_t^\star$.
+
+Step 1: encode the message with an error-correcting code
+
+The message is $k$ symbols, each a number in $\{0,\dots,q-1\}$ (throughout the work we use $q=53$, since a prime number is needed for the code's finite-field arithmetic). An error-correcting code, specifically a low-density parity-check (LDPC) code, is utilized with a public generator matrix $G$, and encodes the message to a length-$n$ codeword $C=m\cdot G$, one symbol per token to be generated. The code is used for increased reliability in SimpleMark, not secrecy, since the generator matrix is public.
+
+Step 2: turn the key into a target token on the q-ary simplex
+
+At step $t$, hashing the secret key together with the $h$ previously generated tokens yields a shared secret $S_t=(V_t,\sigma_t)$: a key value $V_t$ uniform on $\{0,\dots,q-1\}$ and a keyed bijection $\sigma_t$ from the top-$q$ tokens to the vertices of the simplex. Concretely: picture $q$ labelled slots that are all equally far from one another, and let $\sigma_t$ be a secret, step-dependent shuffle that drops each of the $q$ candidate tokens into its own slot. The target vertex is the slot selected by the message symbol $C_t$, shifted by the secret key value $V_t$:
+
+    Z_t=(C_t+V_t)\bmod q,
+
+and the target token is the one $\sigma_t$ placed on it. Because $V_t$ is uniform and secret, the target looks uniformly random to anyone without the key, while anyone holding the key can recompute it from the key and the preceding $h$ tokens. Therefore, the encoder and decoder never need to exchange anything beyond the text.
+
+Step 3: tilt the distribution, optimally
+
+Next, we would like to tilt the distribution towards the target token as much as possible while staying within the ε budget. With the embedding cost $d_t(x)=\mathbf 1[\sigma_t(x)\neq Z_t]$ (the discrete metric on the vertex set, since all vertices of a simplex are equidistant), the watermarked distribution is
+
+    Q_t^\star\in\arg\min_{P\in\Delta(\mathcal S_t)}\ \sum_{x} P(x)\,d_t(x)\quad\text{s.t.}\quad D(P,Q_t)\le\varepsilon,
+
+with $D$ either $d_{\mathrm{TV}}$ or $\mathrm{KL}$. The cost is an indicator, so the objective depends on $P$ only through the mass $s$ it puts on the target. Let $B$ be the base model's mass on the target. Following the data-processing inequality, any $P$ with target mass $s$ satisfies $D(P,Q_t)\ge D(\mathrm{Bern}(s),\mathrm{Bern}(B))$, with equality when $P$ keeps the base model's relative proportions inside the target and non-target groups. So, the optimum is in fact a two-scalar tilt:
+
+--- box ---
+THE SIMPLEMARK EMBEDDING RULE
+    Q_t^\star(x)=\begin{cases}\alpha_t\,Q_t(x), & \sigma_t(x)=Z_t\\[2pt] \beta_t\,Q_t(x), & \sigma_t(x)\neq Z_t\end{cases}\qquad \alpha_t=\frac{s^\star}{B},\quad \beta_t=\frac{1-s^\star}{1-B},
+
+where $s^\star=B+\min(\varepsilon,1-B)$ for a TV budget, and for a KL budget $s^\star$ is the unique root in $[B,1]$ of $s\log\frac sB+(1-s)\log\frac{1-s}{1-B}=\varepsilon$ (or $s^\star=1$ when $\varepsilon\ge\log\frac1B$). By construction $d_{\mathrm{TV}}(Q_t^\star,Q_t)=s^\star-B$, which equals $\min(\varepsilon,1-B)\le\varepsilon$ under the TV budget; under the KL budget it is $\mathrm{KL}(Q_t^\star\|Q_t)=\varepsilon$ that is enforced instead, and the TV distance may exceed $\varepsilon$.
+
+--- end box ---
+
+That is the entire embedding step: one scalar equation per token, and while we use optimal transport, there are no iterations needed to solve the transport problem, which is where the “fast” in the title comes from. In practice we also cap $\alpha_t$ at some $\alpha_{\max}$, so that a token the model considers very unlikely never receives a huge boost. On the paper's reasoning traces (ε = 0.05, $\alpha_{\max}=1500$) the cap binds on roughly 91% of tokens. Capping $\alpha_t$ makes it less likely that a very unlikely token gets sampled, which could derail a reasoning chain. In fact, in this setting we observe no loss in reasoning accuracy (Section 5). The cap is not free: when it binds, the realized divergence is below ε and less information is embedded per token. However, we still have competitive message recovery capabilities.
+
+Step 4: decode by maximum likelihood
+
+Decoding SimpleMark: given the text, the decoder replays the model to recover each $Q_t$, recomputes $(V_t,\sigma_t)$ from the key and the preceding tokens, and for each possible code symbol $a$ asks how likely the observed token $x_t$ was under the tilt that symbol would have produced: $L_t(a)=\log Q^\star_{t,a}(x_t)$. Summing along a candidate codeword gives a score for each candidate message,
+
+    \Lambda(\hat m)=\sum_{t=1}^n L_t\big(C_t(\hat m)\big),\qquad \hat M=\arg\max_{\hat m}\Lambda(\hat m).
+
+The decoder uses the same channel law as the encoder, so it is matched to it. This maximum-likelihood rule is exactly what the decoder panel in the interactive demo just below computes, with the scores shown as posterior probabilities under a uniform prior over the eight messages.
+
+(Interactive demo. The lines below are the demo’s own labels; the live readout sentences live in simplemark-demo.js.)
+
+TRY IT: HIDE A 3-BIT MESSAGE IN A STORY (SIMPLIFIED)
+
+Everything from Section 4 in miniature. A toy language model writes a story one word at a time; at each word the key picks a target among 8 candidates, the distribution is tilted toward it within the budget ε (TV or KL), and a word is sampled. The decoder on the right scores all eight 3-bit messages by maximum likelihood as the text grows. Pick a message, set a budget, and press Next word; switch on the wrong key to see the message vanish.
+
+Controls: Message (3 bits) | Distance measure | Budget ε = 0.20 | Max boost α ≤ | Secret key | Words
+
+Encoder: tilt the next-word distribution
+
+Legend: base model Qt (original probabilities) other words, scaled down ×β target word, boosted ×α
+
+Decoder: which message explains the words?
+
+Checkbox: Decoder uses the wrong key
+
+Generated text
+
+Legend: the target word was sampled  ·   a different word was sampled. Every word is a random draw from the tilted distribution; the decoder reads the message from the statistics of hits.
+
+5. EXPERIMENTS
+
+We evaluate on Qwen3.5-9B-Base and Llama3.1-8B-Instruct, generating 300 tokens per trial on C4-RealNewslike prompts at temperature 1.0 and evaluating prefixes of 50, 100, …, 300 tokens, with 300 trials per point. SimpleMark uses $q=53$ (so top-53 sampling); the baselines use top-50 sampling and their authors' settings. The baselines are ArcMark[15] and BiMark[16], both with public implementations and state-of-the-art message recovery. However, these watermarks use different distortion-freeness definitions. Use the tabs to explore each result.
+
+[Tab: Detectability]
+
+How much can the best detector learn from one token? We estimate the next-token distribution of each scheme empirically (10 prompts × 10,000 samples per prompt) and compute its TV distance from the unwatermarked distribution, which is exactly the maximum advantage of any single-token distinguisher. Even the unwatermarked model shows a small nonzero value from sampling noise.
+
+Figure caption: Empirical maximum distinguishing advantage per token (Figure 2 of the paper). Solid bars: Qwen3.5-9B-Base; hatched: Llama3.1-8B-Instruct. Left: within the sampler's top-k support. Right: against the untruncated base model, which adds the tail mass removed by top-k truncation. Within the support, SimpleMark's advantage is at most its budget ε. Against the untruncated model it is at most ε plus the tail mass that every top-k sampler, the unwatermarked one included, already pays (in the figure it stays well under that sum: 0.115 for TV ε = 0.10 on Qwen, against 0.10 + 0.059). ArcMark gives the detector a 46–57% advantage and BiMark 51–65%, despite both carrying their own, weaker distortion-freeness guarantees.
+
+[Tab: Text quality]
+
+Perplexity. Since $\mathrm{PPL}=e^{H(P)}e^{\mathrm{KL}(P\|Q)}$, a KL budget is a direct handle on the $e^{\mathrm{KL}}$ factor, the part of perplexity the watermark controls. As expected, SimpleMark under a small KL budget tracks the unwatermarked perplexity most closely at every length.
+
+Figure caption: Perplexity for 50–300 token outputs (Figure 3 of the paper), scored by the base model. SimpleMark with KL ε = 0.01 is consistently closest to the unwatermarked output. (ArcMark's perplexity falls below the unwatermarked curve on Llama. Lower-than-base perplexity is not a quality gain in itself: the goal is to stay close to the base model, not below it.)
+
+[Tab: Reasoning]
+
+Does the watermark hurt reasoning? We run Qwen3.5-9B in thinking mode (temperature 0.6) on GSM8K, GPQA-Diamond, LiveCodeBench, and AIME 2024, one sample per problem, identical problem sets for every scheme, embedding a 3-bit or 8-bit message at ε = 0.05 with $\alpha_{\max}=1500$. Counts are problems solved.
+
+    Scheme	GSM8K (300)	GPQA-D (198)	LCB (100)	AIME 2024 (30)
+    3-bit payload
+    SimpleMark TV (ε=0.05, αmax=1500)	278	112	33	8
+    SimpleMark KL (ε=0.05, αmax=1500)	274	108	40	9
+    BiMark	270	107	33	11
+    ArcMark	272	111	35	10
+    Unwatermarked	272	110	36	8
+    8-bit payload
+    SimpleMark TV (ε=0.05, αmax=1500)	275	103	38	9
+    SimpleMark KL (ε=0.05, αmax=1500)	273	102	41	8
+    BiMark	279	94	33	8
+    ArcMark	274	109	40	7
+    Unwatermarked	272	110	36	8
+
+Table 2 of the paper. LiveCodeBench is graded on public test cases only, so its counts are comparable across schemes but not to published leaderboards. Differences between schemes are within run-to-run noise at these sample sizes: the point is the absence of degradation. Llama3.1-8B-Instruct results (Table 3 in the paper) tell the same story.
+
+[Tab: Message recovery]
+
+Can we read the message back? We report message accuracy (the whole payload exactly right), since a single bit error can change the meaning of an ID. Under a TV budget of ε = 0.15 SimpleMark recovers the message from shorter texts than the baselines (higher accuracy at a given number of tokens; this is about how much text the decoder needs, not how long it takes to run), even though those baselines are designed to maximize recovery and pay for it with the large per-token deviations shown in the Detectability tab. The KL ε = 0.15 variant trails ArcMark over the first 100 tokens on the 8-bit payload and the first 150 tokens on the 16-bit payload before catching up by 200 tokens. At the smaller, more practical budgets it remains competitive: at ε = 0.05 an 8-bit message is recovered reliably within 200–300 tokens, and at ε = 0.01 the decoder simply needs more text (500–1000 tokens; an 8-bit message climbs from about 75% at 500 tokens to about 95% at 1000, and a 16-bit one from about 45% to about 87%, Figure 5 in the paper).
+
+Figure caption: Message recovery versus prefix length (Figure 4 of the paper) for 3-, 8-, and 16-bit payloads, with ε ∈ {0.05, 0.10, 0.15} under TV and KL budgets, on Qwen3.5-9B-Base (top) and Llama3.1-8B-Instruct (bottom). Dashed SimpleMark curves use the $\alpha_{\max}=1500$ cap.
+
+[Tab: Zero-bit detection]
+
+Zero-bit detection. True positive rate of the keyed detector as a function of text length at false positive rates of $10^{-2}$, $10^{-6}$ and $10^{-12}$. Fast detection is not an unambiguous virtue: the keyed detector's power is fueled by the same distributional deviation an adversary can exploit. The baselines detect quickly precisely because their per-token deviations are large; SimpleMark caps that deviation at ε, so lower budgets detect more slowly by design.
+
+Figure caption: Zero-bit detection (Figure 7 of the paper). At higher budgets SimpleMark matches or exceeds the baselines; at lower budgets it stays closer to the unwatermarked distribution and therefore detects more slowly.
+
+[Tab: Robustness]
+
+Token substitution. We replace a percentage of the tokens of a 300-token output with random vocabulary words and try to decode. Recovery degrades roughly exponentially with the substitution rate, as expected from a keyed context hash: each substituted token corrupts its own symbol and desynchronizes the key for the next $h$ positions.
+
+Figure caption: Robustness to random token substitution (Figure 6 of the paper) for ε ∈ {0.05, 0.15} and context hashing windows $h\in\{1,2,3\}$.
+
+Two more results live in the appendix. First, an ablation with $q=29$ instead of 53 (simplex, LDPC field size, and top-$k$ all shrunk together): perplexity stays close to the unwatermarked baseline at both sizes, and message recovery is similar at 3 and 8 bits, though at 16 bits $q=29$ lags by up to roughly 25 points at 100–150 tokens for the smallest budgets. The GSM8K sweep over $\alpha_{\max}\in\{200,500,1000\}$ (16-bit payload, Qwen3.5-9B-Base) shows that the cap matters. It is a harder setting than the reasoning table (base model rather than thinking mode, 16-bit rather than 3- or 8-bit, an unwatermarked accuracy of about 65% rather than 91%), and the sweep stops at $\alpha_{\max}=1000$, so it does not test the $\alpha_{\max}=1500$ operating point. Within it, TV ε = 0.05 accuracy falls as the cap loosens: for $q=53$ from slightly above the unwatermarked model at $\alpha_{\max}=200$ to roughly 5–9 points below at 500 and 1000, and for $q=29$ from a few points below at 200 to 12–14 points below at 500 and 1000, while the ε = 0.01 runs and the KL runs stay within about five points of the baseline or above it. That is the empirical case for a tight cap. Second, long-form decoding at ε ∈ {0.01, 0.05} on 500–1000 tokens, where the decoder still recovers the message accurately.
+
+6. CONCLUSION
+
+We consider multi-bit watermarking in a setting in which we can statistically measure and customize per-token distortion for the key in use. We show that zero distortion leads to zero embedding capacity, and that a nonzero f-divergence budget buys a tunable rate–detectability tradeoff, with the optimal way to spend a budget on a single token being a two-number tilt. SimpleMark combines this tilt embedding technique with an error-correcting code and a matched likelihood decoder. At a per-token level, an adversary's distinguishing advantage decreases greatly to match the budget set, while SimpleMark's message recovery, perplexity, and reasoning performance stay competitive with the strongest prior schemes.
+
+CITATION
+
+If you find this work useful, please cite:
+
+@misc{kim2026simplemark,
+  title         = {SimpleMark: Fast Multi-Bit Text Watermarking under $f$-Divergence Constraints},
+  author        = {Benjamin D. Kim and Wanrong Zhang and Weitong Ruan and Lav R. Varshney and Daniel Alabi},
+  year          = {2026},
+  eprint        = {2610.05712},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.CR},
+  url           = {https://arxiv.org/abs/2610.05712},
+}
+
+REFERENCES
+
+1. D. Seetharaman, M. Barnum. There's a Tool to Catch Students Cheating With ChatGPT. OpenAI Hasn't Released It. The Wall Street Journal, August 4, 2024. <https://www.wsj.com/tech/ai/openai-tool-chatgpt-cheating-writing-135b755a>
+2. I. Mehta. OpenAI will start watermarking ChatGPT's text in the EU. TechCrunch, October 5, 2026. <https://techcrunch.com/2026/10/05/openai-will-start-watermarking-chatgpts-text-in-the-eu/>
+3. S. Dathathri, A. See, S. Ghaisas, et al. Scalable watermarking for identifying large language model outputs. Nature 634, 818–823, 2024. <https://www.nature.com/articles/s41586-024-08025-4>
+4. Anthropic. How Claude's text watermarking works. August 2026. <https://www.anthropic.com/news/claude-text-watermark>
+5. K. Krishna, Y. Song, M. Karpinska, J. Wieting, M. Iyyer. Paraphrasing evades detectors of AI-generated text, but retrieval is an effective defense. NeurIPS 2023. <https://arxiv.org/abs/2303.13408>
+6. Y. Cheng, V. S. Sadasivan, M. Saberi, S. Saha, S. Feizi. Adversarial Paraphrasing: A Universal Attack for Humanizing AI-Generated Text. 2025. <https://arxiv.org/abs/2506.07001>
+7. J. Kirchenbauer, J. Geiping, Y. Wen, J. Katz, I. Miers, T. Goldstein. A Watermark for Large Language Models. ICML 2023. <https://arxiv.org/abs/2301.10226>
+8. M. Christ, S. Gunn, O. Zamir. Undetectable Watermarks for Language Models. 2023. <https://arxiv.org/abs/2306.09194>
+9. R. Kuditipudi, J. Thickstun, T. Hashimoto, P. Liang. Robust Distortion-free Watermarks for Language Models. TMLR 2024. <https://arxiv.org/abs/2307.15593>
+10. A. Cohen, A. Hoover, G. Schoenbach. Watermarking Language Models for Many Adaptive Users. IEEE S&P 2025. <https://arxiv.org/abs/2405.11109>
+11. W. Qu, W. Zheng, T. Tao, D. Yin, Y. Jiang, Z. Tian, W. Zou, J. Jia, J. Zhang. Provably Robust Multi-bit Watermarking for AI-generated Text. USENIX Security 2025. <https://arxiv.org/abs/2401.16820>
+12. H. Zhang, B. L. Edelman, D. Francati, D. Venturi, G. Ateniese, B. Barak. Watermarks in the Sand: Impossibility of Strong Watermarking for Generative Models. ICML 2024. <https://arxiv.org/abs/2311.04378>
+13. H. Chang, H. Hassani, R. Shokri. Watermark Smoothing Attacks against Language Models. Findings of EMNLP 2025.
+14. J. Katz, Y. Lindell. Introduction to Modern Cryptography, 2nd ed. Chapman & Hall/CRC, 2014.
+15. A. Gilani, S. Vithana, C. X. Long, O. Kosut, L. Sankar, F. P. Calmon. ArcMark: Distortion-Free Multi-Byte LLM Watermark via Optimal Transport. 2026. <https://arxiv.org/abs/2602.07235>
+16. X. Feng, H. Zhang, Y. Zhang, L. Y. Zhang, S. Pan. BiMark: Unbiased Multilayer Watermarking for Large Language Models. ICML 2025. <https://arxiv.org/abs/2506.21602>
