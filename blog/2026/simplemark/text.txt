@@ -2,8 +2,7 @@ SIMPLEMARK: FAST MULTI-BIT TEXT WATERMARKING UNDER F-DIVERGENCE CONSTRAINTS
 
 Benjamin D. Kim, Wanrong Zhang, Weitong Ruan, Lav R. Varshney, Daniel Alabi
 arXiv preprint, October 2026
-In collaboration with UIUC and Amazon AGI.
-Blog post by Ben Kim · October 6, 2026 · about 12 minutes
+MIT, Amazon AGI, UIUC
 Figure caption: SimpleMark in one loop. For every token, the secret key picks a target token among the model's top candidate words, each placed on a simplex (1), the next-word probabilities are tilted toward that target by at most a budget ε (2), and a word is sampled from the tilted distribution (3). Sections 1–4 explain each step, followed by an interactive demo.
 
 --- box ---

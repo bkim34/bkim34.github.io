@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SimpleMark results</title>
+<style>
+  :root { --surface: #fcfcfb; --plane: #f4f4f1; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --ours: #2a78d6; --prior: #b8b6ae; --ring: rgba(11,11,11,0.10); }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--surface); }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .card { width: 1600px; height: 900px; padding: 52px 64px 40px; display: grid; grid-template-rows: auto 1fr auto; row-gap: 22px; }
+  h1 { margin: 0; font-size: 44px; line-height: 1.12; font-weight: 700; letter-spacing: -0.012em; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 18px; min-height: 0; }
+  .panel { border: 1px solid var(--ring); border-radius: 14px; padding: 18px 22px 14px; background: var(--plane); display: grid; grid-template-rows: auto auto 1fr; row-gap: 6px; min-height: 0; }
+  .panel .k { font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  .panel .h { font-size: 24px; font-weight: 700; line-height: 1.2; }
+  .panel .h span { color: var(--ours); }
+  .panel svg { display: block; width: 100%; height: 100%; }
+  .stat { display: flex; align-items: baseline; gap: 18px; margin-top: 14px; }
+  .stat .v { font-size: 64px; font-weight: 700; line-height: 1; color: var(--ours); letter-spacing: -0.02em; white-space: nowrap; }
+  .stat .l { font-size: 21px; color: var(--ink-2); line-height: 1.3; max-width: 420px; }
+  .foot { display: flex; justify-content: space-between; font-size: 18px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 8px; margin-right: 22px; color: var(--ink-2); }
+  .sw { display: inline-block; width: 18px; height: 12px; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SimpleMark: detectability drops to the budget ε. Everything else holds.</h1>
+  <div class="grid">
+    <div class="panel">
+      <div class="k">Detectability</div>
+      <div class="h">Best detector's advantage per token: <span>at the budget</span> vs. over 50% for prior work</div>
+      <svg id="c1" viewBox="0 0 700 190" role="img" aria-label="SimpleMark 1% and 10%; ArcMark 56%; BiMark 64%"></svg>
+    </div>
+    <div class="panel">
+      <div class="k">Reasoning</div>
+      <div class="h">GSM8K problems solved (of 300): <span>no degradation</span></div>
+      <svg id="c2" viewBox="0 0 700 190" role="img" aria-label="SimpleMark 278, unwatermarked 272, ArcMark 272, BiMark 270"></svg>
+    </div>
+    <div class="panel">
+      <div class="k">Message recovery</div>
+      <div class="h">The hidden message reads back reliably</div>
+      <div class="stat"><div class="v">97–100%</div><div class="l">of 8-bit messages recovered within 200–300 tokens at ε = 0.05. At ε = 0.15, faster than either baseline.</div></div>
+    </div>
+    <div class="panel">
+      <div class="k">Text quality</div>
+      <div class="h">Perplexity stays closest to the unwatermarked model</div>
+      <div class="stat"><div class="v">Closest</div><div class="l">of all schemes, under a KL budget of ε = 0.01, at every length from 50 to 300 tokens.</div></div>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="legend"><span><i class="sw" style="background:var(--ours)"></i>SimpleMark</span><span><i class="sw" style="background:var(--prior)"></i>prior multi-bit watermarks / unwatermarked</span></div>
+    <div>Qwen3.5-9B · SimpleMark, arXiv:2610.05712</div>
+  </div>
+</div>
+<script>
+(function () {
+  var css = getComputedStyle(document.documentElement), OURS = css.getPropertyValue('--ours').trim(), PRIOR = css.getPropertyValue('--prior').trim();
+  var INK = css.getPropertyValue('--ink').trim(), INK2 = css.getPropertyValue('--ink-2').trim(), MUTED = css.getPropertyValue('--muted').trim(), GRID = css.getPropertyValue('--grid').trim(), AXIS = css.getPropertyValue('--axis').trim();
+  var NS = 'http://www.w3.org/2000/svg';
+  function bars(id, rows, xmax, fmt, ticks) {
+    var svg = document.getElementById(id);
+    function el(t, a, txt) { var e = document.createElementNS(NS, t); for (var k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; svg.appendChild(e); return e; }
+    var W = 700, H = 190, pl = 210, pr = 92, pt = 14, pb = 26, iw = W - pl - pr, ih = H - pt - pb, pitch = ih / rows.length, bh = 24;
+    function x(v) { return pl + v / xmax * iw; }
+    ticks.forEach(function (g) {
+      el('line', { x1: x(g), x2: x(g), y1: pt, y2: pt + ih, stroke: GRID, 'stroke-width': 1 });
+      el('text', { x: x(g), y: pt + ih + 20, 'text-anchor': 'middle', 'font-size': 13, fill: MUTED }, fmt(g));
+    });
+    el('line', { x1: x(0), x2: x(0), y1: pt, y2: pt + ih, stroke: AXIS, 'stroke-width': 1 });
+    rows.forEach(function (r, i) {
+      var y = pt + i * pitch + (pitch - bh) / 2, w = Math.max(4, x(r.v) - x(0)), col = r.ours ? OURS : PRIOR;
+      el('text', { x: pl - 14, y: y + bh / 2 + 6, 'text-anchor': 'end', 'font-size': 17, 'font-weight': r.ours ? 700 : 500, fill: r.ours ? INK : INK2 }, r.name);
+      el('rect', { x: x(0), y: y, width: w, height: bh, fill: col });
+      el('rect', { x: x(0) + w - 4, y: y, width: 4, height: bh, rx: 3, fill: col });
+      el('text', { x: x(0) + w + 10, y: y + bh / 2 + 7, 'font-size': 19, 'font-weight': 700, fill: r.ours ? OURS : INK2 }, fmt(r.v));
+      if (r.eps) el('line', { x1: x(r.eps), x2: x(r.eps), y1: y - 5, y2: y + bh + 5, stroke: INK, 'stroke-width': 2, 'stroke-dasharray': '4 3' });
+    });
+  }
+  bars('c1', [
+    { name: 'SimpleMark, ε = 0.01', v: 0.010, ours: true, eps: 0.01 },
+    { name: 'SimpleMark, ε = 0.10', v: 0.100, ours: true, eps: 0.10 },
+    { name: 'ArcMark', v: 0.558 },
+    { name: 'BiMark', v: 0.637 }
+  ], 0.7, function (v) { return Math.round(v * 100) + '%'; }, [0, 0.25, 0.5]);
+  bars('c2', [
+    { name: 'SimpleMark, ε = 0.05', v: 278, ours: true },
+    { name: 'Unwatermarked', v: 272 },
+    { name: 'ArcMark', v: 272 },
+    { name: 'BiMark', v: 270 }
+  ], 300, function (v) { return String(v); }, [0, 100, 200, 300]);
+})();
+</script>
+</body>
+</html>

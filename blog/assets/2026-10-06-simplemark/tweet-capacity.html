@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Capacity vs budget</title>
+<style>
+  :root { --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --ours: #2a78d6; --red: #d03b3b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--surface); }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--ink); }
+  .card { width: 1600px; height: 900px; padding: 64px 80px 52px; display: grid; grid-template-rows: auto 1fr auto; row-gap: 20px; }
+  h1 { margin: 0; font-size: 54px; line-height: 1.12; font-weight: 700; letter-spacing: -0.015em; }
+  .sub { margin: 12px 0 0; font-size: 27px; color: var(--ink-2); line-height: 1.3; }
+  .chart svg { display: block; width: 100%; height: 100%; }
+  .foot { display: flex; justify-content: space-between; align-items: baseline; font-size: 21px; color: var(--ink-2); }
+  .foot .src { color: var(--muted); font-size: 20px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <h1>No distortion means no message. So make distortion a dial.</h1>
+    <p class="sub">Bits a watermark can carry per token versus the distortion budget ε. At ε = 0 the watermarked and unwatermarked distributions coincide and nothing can be decoded. SimpleMark lets you pick ε.</p>
+  </div>
+  <div class="chart"><svg id="c" viewBox="0 0 1440 470" role="img" aria-label="Curve of bits per token rising from zero at epsilon zero, quadratically at first, to one bit at epsilon 0.5"></svg></div>
+  <div class="foot">
+    <div>Binary toy channel from the paper (Example 1): information per token = 1 − h₂(½ + ε).</div>
+    <div class="src">SimpleMark, arXiv:2610.05712</div>
+  </div>
+</div>
+<script>
+(function () {
+  var css = getComputedStyle(document.documentElement), OURS = css.getPropertyValue('--ours').trim(), RED = css.getPropertyValue('--red').trim();
+  var INK = css.getPropertyValue('--ink').trim(), INK2 = css.getPropertyValue('--ink-2').trim(), MUTED = css.getPropertyValue('--muted').trim(), GRID = css.getPropertyValue('--grid').trim(), AXIS = css.getPropertyValue('--axis').trim();
+  var NS = 'http://www.w3.org/2000/svg', svg = document.getElementById('c');
+  function el(t, a, txt) { var e = document.createElementNS(NS, t); for (var k in a) e.setAttribute(k, a[k]); if (txt != null) e.textContent = txt; svg.appendChild(e); return e; }
+  var W = 1440, H = 470, pl = 110, pr = 60, pt = 30, pb = 70, iw = W - pl - pr, ih = H - pt - pb;
+  function h2(p) { function f(a) { return a <= 0 ? 0 : -a * Math.log2(a); } return f(p) + f(1 - p); }
+  function I(e) { return 1 - h2(0.5 + e); }
+  function X(e) { return pl + (e / 0.5) * iw; }
+  function Y(v) { return pt + ih - v * ih; }
+  // grid + axes
+  [0.25, 0.5, 0.75, 1].forEach(function (g) {
+    el('line', { x1: pl, x2: W - pr, y1: Y(g), y2: Y(g), stroke: GRID, 'stroke-width': 1.5 });
+    el('text', { x: pl - 14, y: Y(g) + 8, 'text-anchor': 'end', 'font-size': 22, fill: MUTED }, g.toFixed(2));
+  });
+  [0, 0.1, 0.2, 0.3, 0.4, 0.5].forEach(function (g) {
+    el('text', { x: X(g), y: Y(0) + 34, 'text-anchor': 'middle', 'font-size': 22, fill: MUTED }, g.toFixed(1));
+  });
+  el('line', { x1: pl, x2: W - pr, y1: Y(0), y2: Y(0), stroke: AXIS, 'stroke-width': 1.5 });
+  el('line', { x1: pl, x2: pl, y1: pt, y2: Y(0), stroke: AXIS, 'stroke-width': 1.5 });
+  el('text', { x: pl - 14, y: Y(0) + 8, 'text-anchor': 'end', 'font-size': 22, fill: MUTED }, '0');
+  el('text', { x: W - pr, y: Y(0) + 62, 'text-anchor': 'end', 'font-size': 23, fill: INK2 }, 'distortion budget ε (total variation per token)');
+  el('text', { x: pl + 10, y: pt - 6, 'font-size': 23, fill: INK2 }, 'bits per token');
+  // area + curve
+  var d = '', n = 160;
+  for (var i = 0; i <= n; i++) { var e = 0.5 * i / n; d += (i ? ' L' : 'M') + X(e).toFixed(1) + ' ' + Y(I(e)).toFixed(1); }
+  el('path', { d: d + ' L' + X(0.5) + ' ' + Y(0) + ' L' + X(0) + ' ' + Y(0) + ' Z', fill: OURS, 'fill-opacity': 0.08 });
+  el('path', { d: d, fill: 'none', stroke: OURS, 'stroke-width': 5, 'stroke-linecap': 'round' });
+  // zero point
+  el('circle', { cx: X(0), cy: Y(0), r: 11, fill: RED, stroke: '#fff', 'stroke-width': 3 });
+  el('line', { x1: X(0) + 4, y1: Y(0) - 10, x2: X(0.055), y2: Y(0.42) + 10, stroke: RED, 'stroke-width': 2.5 });
+  el('text', { x: X(0.055) + 6, y: Y(0.42) + 2, 'font-size': 26, 'font-weight': 700, fill: RED }, 'ε = 0: zero bits.');
+  el('text', { x: X(0.055) + 6, y: Y(0.42) + 34, 'font-size': 24, fill: RED }, 'Nothing can be embedded.');
+  // practical range bracket
+  el('rect', { x: X(0.01), y: pt, width: X(0.15) - X(0.01), height: ih, fill: INK, 'fill-opacity': 0.04 });
+  el('text', { x: (X(0.01) + X(0.15)) / 2, y: pt + 28, 'text-anchor': 'middle', 'font-size': 21, fill: INK2 }, 'budgets in the paper: ε = 0.01 to 0.15');
+  // marked points
+  [[0.1, 'ε = 0.1', 0, -22], [0.2, 'ε = 0.2', 18, -18]].forEach(function (p) {
+    el('circle', { cx: X(p[0]), cy: Y(I(p[0])), r: 9, fill: OURS, stroke: '#fff', 'stroke-width': 3 });
+    el('text', { x: X(p[0]) + p[2], y: Y(I(p[0])) + p[3], 'text-anchor': p[2] ? 'start' : 'middle', 'font-size': 22, fill: INK }, p[1] + ': ' + I(p[0]).toFixed(2) + ' bits');
+  });
+  // takeaway on the curve
+  el('text', { x: X(0.37), y: Y(I(0.37)) - 40, 'text-anchor': 'end', 'font-size': 24, 'font-weight': 700, fill: OURS }, 'more budget, more bits');
+})();
+</script>
+</body>
+</html>
